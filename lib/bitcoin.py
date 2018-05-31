@@ -78,7 +78,7 @@ class NetworkConstants:
         cls.ADDRTYPE_P2PKH = 3
         cls.ADDRTYPE_P2SH = 8
         cls.SEGWIT_HRP = "lbtc"
-        cls.HEADERS_URL = "http://127.0.0.1/var/www/html/db"
+        cls.HEADERS_URL = "http://127.0.0.1/var/www/html/db/headers00"
         cls.GENESIS = "46f1eae198eddd22156b5cebf7023e3998981f518d558e42830edd2795b89b9f"
         cls.DEFAULT_PORTS = {'t': '50001', 's': '50002'}
         cls.DEFAULT_SERVERS = read_json_dict('servers.json')
