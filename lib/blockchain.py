@@ -336,4 +336,4 @@ class Blockchain(util.PrintError):
             return True
         except BaseException as e:
             self.print_error('verify_chunk failed', str(e))
-            return True
+            return False
