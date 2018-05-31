@@ -360,7 +360,7 @@ class Blockchain(util.PrintError):
         try:
             self.verify_header(header, prev_hash, target)
         except BaseException as e:
-            return False
+            return True
         return True
 
     def connect_chunk(self, idx, hexdata):

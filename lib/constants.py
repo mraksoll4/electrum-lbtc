@@ -41,10 +41,10 @@ class BitcoinMainnet:
 
     TESTNET = False
     WIF_PREFIX = 0x80
-    ADDRTYPE_P2PKH = 48
-    ADDRTYPE_P2SH = 50
+    ADDRTYPE_P2PKH = 3
+    ADDRTYPE_P2SH = 8
     SEGWIT_HRP = "lbtc"
-    GENESIS = "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2"
+    GENESIS = "47312f978ba691bfe0dc40e553b0ede5bf58f4e78c8319d755aa5d2672c0da3e"
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
     DEFAULT_SERVERS = read_json('servers.json', {})
     CHECKPOINTS = read_json('checkpoints.json', [])
