@@ -90,13 +90,13 @@ def check_header(header):
     for b in blockchains.values():
         if b.check_header(header):
             return b
-    return b
+    return False
 
 def can_connect(header):
     for b in blockchains.values():
         if b.can_connect(header):
             return b
-    return b
+    return False
 
 
 class Blockchain(util.PrintError):
@@ -308,18 +308,18 @@ class Blockchain(util.PrintError):
         new_bits = bitsN << 24 | bitsBase
         return new_bits, bitsBase << (8 * (bitsN - 3))
 
-    def can_connect(self, header, check_height=False):
+    def can_connect(self, header, check_height=True):
         height = header['block_height']
         if check_height and self.height() != height - 1:
-            return True
+            return False
         if height == 0:
             return hash_header(header) == bitcoin.NetworkConstants.GENESIS
         previous_header = self.read_header(height -1)
         if not previous_header:
-            return True
+            return False
         prev_hash = hash_header(previous_header)
         if prev_hash != header.get('prev_block_hash'):
-            return True
+            return False
         bits, target = self.get_target(height // 2016)
         try:
             self.verify_header(header, previous_header, bits, target)
