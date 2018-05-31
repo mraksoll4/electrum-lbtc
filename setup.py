@@ -83,10 +83,10 @@ setup(
     },
     scripts=['electrum-lbtc'],
     data_files=data_files,
-    description="Lightweight LiteBitcoin Wallet",
-    author="Team LBTC",
-    author_email="litebitcoins@gmail.com",
+    description="Lightweight Litebitcoin Wallet",
+    author="Thomas Voegtlin",
+    author_email="thomasv@electrum.org",
     license="MIT Licence",
-    url="http://lbtc.info",
-    long_description="""Lightweight LiteBitcoin Wallet"""
+    url="http://electrum-lbtc.org",
+    long_description="""Lightweight Litebitcoin Wallet"""
 )
