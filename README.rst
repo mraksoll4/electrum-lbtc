@@ -32,12 +32,10 @@ directory. To run Electrum from its root directory, just do::
 You can also install Electrum on your system, by running this command::
 
     sudo apt-get install python3-setuptools
-    pip3 install .[full]
+    python3 setup.py install
 
 This will download and install the Python dependencies used by
 Electrum, instead of using the 'packages' directory.
-The 'full' extra contains some optional dependencies that we think
-are often useful but they are not strictly needed.
 
 If you cloned the git repository, you need to compile extra files
 before you can run Electrum. Read the next section, "Development
@@ -48,14 +46,14 @@ Version".
 Development version
 ===================
 
-Check out the code from GitHub::
+Check out the code from Github::
 
     git clone git://github.com/mraksoll4/electrum-lbtc.git
     cd electrum-lbtc
 
 Run install (this should install dependencies)::
 
-    pip3 install .[full]
+    python3 setup.py install
 
 Compile the icons file for Qt::
 
@@ -69,7 +67,7 @@ Compile the protobuf description file::
 
 Create translations (optional)::
 
-    sudo apt-get install python-requests gettext
+    sudo apt-get install python-pycurl gettext
     ./contrib/make_locale
 
 
@@ -88,12 +86,20 @@ This directory contains the python dependencies used by Electrum.
 Mac OS X / macOS
 --------
 
-See `contrib/build-osx/`.
+::
+
+    # On MacPorts installs: 
+    sudo python3 setup-release.py py2app
+    
+    # On Homebrew installs: 
+    ARCHFLAGS="-arch i386 -arch x86_64" sudo python3 setup-release.py py2app --includes sip
+    
+    sudo hdiutil create -fs HFS+ -volname "Electrum-LBTC" -srcfolder dist/Electrum-LBTC.app dist/electrum-lbtc-VERSION-macosx.dmg
 
 Windows
 -------
 
-See `contrib/build-wine/`.
+See `contrib/build-wine/README` file.
 
 
 Android

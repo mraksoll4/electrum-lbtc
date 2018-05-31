@@ -1,32 +1,30 @@
+from PyQt5.QtGui import *
+from electrum_lbtc.i18n import _
+
+
 import datetime
 from collections import defaultdict
+from electrum_lbtc.bitcoin import COIN
 
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as md
-
-from .i18n import _
-from .bitcoin import COIN
-
-
-class NothingToPlotException(Exception):
-    def __str__(self):
-        return _("Nothing to plot.")
+from matplotlib.patches import Ellipse
+from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, DrawingArea, HPacker
 
 
-def plot_history(history):
-    if len(history) == 0:
-        raise NothingToPlotException()
+def plot_history(wallet, history):
     hist_in = defaultdict(int)
     hist_out = defaultdict(int)
     for item in history:
-        if not item['confirmations']:
+        tx_hash, height, confirmations, timestamp, value, balance = item
+        if not confirmations:
             continue
-        if item['timestamp'] is None:
+        if timestamp is None:
             continue
-        value = item['value'].value/COIN
-        date = item['date']
+        value = value*1./COIN
+        date = datetime.datetime.fromtimestamp(timestamp)
         datenum = int(md.date2num(datetime.date(date.year, date.month, 1)))
         if value > 0:
             hist_in[datenum] += value
@@ -45,19 +43,10 @@ def plot_history(history):
     xfmt = md.DateFormatter('%Y-%m')
     ax.xaxis.set_major_formatter(xfmt)
     width = 20
-
-    r1 = None
-    r2 = None
-    dates_values = list(zip(*sorted(hist_in.items())))
-    if dates_values and len(dates_values) == 2:
-        dates, values = dates_values
-        r1 = axarr[0].bar(dates, values, width, label='incoming')
-        axarr[0].legend(loc='upper left')
-    dates_values = list(zip(*sorted(hist_out.items())))
-    if dates_values and len(dates_values) == 2:
-        dates, values = dates_values
-        r2 = axarr[1].bar(dates, values, width, color='r', label='outgoing')
-        axarr[1].legend(loc='upper left')
-    if r1 is None and r2 is None:
-        raise NothingToPlotException()
+    dates, values = zip(*sorted(hist_in.items()))
+    r1 = axarr[0].bar(dates, values, width, label='incoming')
+    axarr[0].legend(loc='upper left')
+    dates, values = zip(*sorted(hist_out.items()))
+    r2 = axarr[1].bar(dates, values, width, color='r', label='outgoing')
+    axarr[1].legend(loc='upper left')
     return plt

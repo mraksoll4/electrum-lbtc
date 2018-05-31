@@ -20,7 +20,6 @@ Builder.load_string('''
     can_rbf: False
     fee_str: ''
     date_str: ''
-    date_label:''
     amount_str: ''
     tx_hash: ''
     status_str: ''
@@ -47,7 +46,7 @@ Builder.load_string('''
                         text: _('Description') if root.description else ''
                         value: root.description
                     BoxLabel:
-                        text: root.date_label
+                        text: _('Date') if root.date_str else ''
                         value: root.date_str
                     BoxLabel:
                         text: _('Amount sent') if root.is_mine else _('Amount received')
@@ -111,13 +110,10 @@ class TxDialog(Factory.Popup):
         tx_hash, self.status_str, self.description, self.can_broadcast, self.can_rbf, amount, fee, height, conf, timestamp, exp_n = self.wallet.get_tx_info(self.tx)
         self.tx_hash = tx_hash or ''
         if timestamp:
-            self.date_label = _('Date')
             self.date_str = datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
         elif exp_n:
-            self.date_label = _('Mempool depth')
-            self.date_str = _('{} from tip').format('%.2f MB'%(exp_n/1000000))
+            self.date_str = _('Within %d blocks') % exp_n if exp_n > 0 else _('unknown (low fee)')
         else:
-            self.date_label = ''
             self.date_str = ''
 
         if amount is None:

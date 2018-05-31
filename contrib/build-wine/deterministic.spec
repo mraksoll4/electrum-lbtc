@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 import sys
 for i, x in enumerate(sys.argv):
@@ -8,10 +8,8 @@ for i, x in enumerate(sys.argv):
         cmdline_name = sys.argv[i+1]
         break
 else:
-    raise Exception('no name')
+    raise BaseException('no name')
 
-PYTHON_VERSION = '3.5.4'
-PYHOME = 'c:/python' + PYTHON_VERSION
 
 home = 'C:\\electrum-lbtc\\'
 
@@ -20,25 +18,15 @@ hiddenimports = []
 hiddenimports += collect_submodules('trezorlib')
 hiddenimports += collect_submodules('btchip')
 hiddenimports += collect_submodules('keepkeylib')
-hiddenimports += collect_submodules('websocket')
 hiddenimports += ['_scrypt']
-
-# Add libusb binary
-binaries = [(PYHOME+"/libusb-1.0.dll", ".")]
-
-# Workaround for "Retro Look":
-binaries += [b for b in collect_dynamic_libs('PyQt5') if 'qwindowsvista' in b[0]]
 
 datas = [
     (home+'lib/currencies.json', 'electrum_lbtc'),
     (home+'lib/servers.json', 'electrum_lbtc'),
-    (home+'lib/checkpoints.json', 'electrum_lbtc'),
     (home+'lib/servers_testnet.json', 'electrum_lbtc'),
-    (home+'lib/checkpoints_testnet.json', 'electrum_lbtc'),
     (home+'lib/wordlist/english.txt', 'electrum_lbtc/wordlist'),
     (home+'lib/locale', 'electrum_lbtc/locale'),
     (home+'plugins', 'electrum_lbtc_plugins'),
-    ('C:\\Program Files (x86)\\ZBar\\bin\\', '.')
 ]
 datas += collect_data_files('trezorlib')
 datas += collect_data_files('btchip')
@@ -63,7 +51,6 @@ a = Analysis([home+'electrum-lbtc',
               home+'plugins/ledger/qt.py',
               #home+'packages/requests/utils.py'
               ],
-             binaries=binaries,
              datas=datas,
              #pathex=[home+'lib', home+'gui', home+'plugins'],
              hiddenimports=hiddenimports,

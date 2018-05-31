@@ -69,9 +69,6 @@ class AmountEdit(MyLineEdit):
         except:
             return None
 
-    def setAmount(self, x):
-        self.setText("%d"%x)
-
 
 class BTCAmountEdit(AmountEdit):
 
@@ -81,12 +78,13 @@ class BTCAmountEdit(AmountEdit):
 
     def _base_unit(self):
         p = self.decimal_point()
+        assert p in [2, 5, 8]
         if p == 8:
             return 'LBTC'
         if p == 5:
             return 'mLBTC'
         if p == 2:
-            return 'uLBTC'
+            return 'bits'
         raise Exception('Unknown base unit')
 
     def get_amount(self):
@@ -103,13 +101,6 @@ class BTCAmountEdit(AmountEdit):
         else:
             self.setText(format_satoshis_plain(amount, self.decimal_point()))
 
-
-class FeerateEdit(BTCAmountEdit):
+class BTCkBEdit(BTCAmountEdit):
     def _base_unit(self):
-        return 'sat/byte'
-
-    def get_amount(self):
-        sat_per_byte_amount = BTCAmountEdit.get_amount(self)
-        if sat_per_byte_amount is None:
-            return None
-        return 1000 * sat_per_byte_amount
+        return BTCAmountEdit._base_unit(self) + '/kB'

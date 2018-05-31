@@ -25,7 +25,6 @@
 import copy
 import datetime
 import json
-import traceback
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -34,27 +33,16 @@ from PyQt5.QtWidgets import *
 from electrum_lbtc.bitcoin import base_encode
 from electrum_lbtc.i18n import _
 from electrum_lbtc.plugins import run_hook
-from electrum_lbtc import simple_config
 
 from electrum_lbtc.util import bfh
-from electrum_lbtc.wallet import AddTransactionException
-from electrum_lbtc.transaction import SerializationError
-
 from .util import *
 
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
-
 def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False):
-    try:
-        d = TxDialog(tx, parent, desc, prompt_if_unsaved)
-    except SerializationError as e:
-        traceback.print_exc(file=sys.stderr)
-        parent.show_critical(_("Electrum was unable to deserialize the transaction:") + "\n" + str(e))
-    else:
-        dialogs.append(d)
-        d.show()
-
+    d = TxDialog(tx, parent, desc, prompt_if_unsaved)
+    dialogs.append(d)
+    d.show()
 
 class TxDialog(QDialog, MessageBoxMixin):
 
@@ -68,10 +56,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         # e.g. the FX plugin.  If this happens during or after a long
         # sign operation the signatures are lost.
         self.tx = copy.deepcopy(tx)
-        try:
-            self.tx.deserialize()
-        except BaseException as e:
-            raise SerializationError(e)
+        self.tx.deserialize()
         self.main_window = parent
         self.wallet = parent.wallet
         self.prompt_if_unsaved = prompt_if_unsaved
@@ -113,17 +98,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.broadcast_button = b = QPushButton(_("Broadcast"))
         b.clicked.connect(self.do_broadcast)
 
-        self.save_button = QPushButton(_("Save"))
-        save_button_disabled = not tx.is_complete()
-        self.save_button.setDisabled(save_button_disabled)
-        if save_button_disabled:
-            self.save_button.setToolTip(_("Please sign this transaction in order to save it"))
-        else:
-            self.save_button.setToolTip("")
-        self.save_button.clicked.connect(self.save)
-
-        self.export_button = b = QPushButton(_("Export"))
-        b.clicked.connect(self.export)
+        self.save_button = b = QPushButton(_("Save"))
+        b.clicked.connect(self.save)
 
         self.cancel_button = b = QPushButton(_("Close"))
         b.clicked.connect(self.close)
@@ -136,9 +112,9 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.copy_button = CopyButton(lambda: str(self.tx), parent.app)
 
         # Action buttons
-        self.buttons = [self.sign_button, self.broadcast_button, self.save_button, self.cancel_button]
+        self.buttons = [self.sign_button, self.broadcast_button, self.cancel_button]
         # Transaction sharing buttons
-        self.sharing_buttons = [self.copy_button, self.qr_button, self.export_button]
+        self.sharing_buttons = [self.copy_button, self.qr_button, self.save_button]
 
         run_hook('transaction_dialog', self)
 
@@ -160,14 +136,11 @@ class TxDialog(QDialog, MessageBoxMixin):
 
     def closeEvent(self, event):
         if (self.prompt_if_unsaved and not self.saved
-                and not self.question(_('This transaction is not saved. Close anyway?'), title=_("Warning"))):
+            and not self.question(_('This transaction is not saved. Close anyway?'), title=_("Warning"))):
             event.ignore()
         else:
             event.accept()
-            try:
-                dialogs.remove(self)
-            except ValueError:
-                pass  # was not in list already
+            dialogs.remove(self)
 
     def show_qr(self):
         text = bfh(str(self.tx))
@@ -179,12 +152,9 @@ class TxDialog(QDialog, MessageBoxMixin):
 
     def sign(self):
         def sign_done(success):
-            # note: with segwit we could save partially signed tx, because they have a txid
-            if self.tx.is_complete():
+            if success:
                 self.prompt_if_unsaved = True
                 self.saved = False
-                self.save_button.setDisabled(False)
-                self.save_button.setToolTip("")
             self.update()
             self.main_window.pop_top_level_window(self)
 
@@ -193,18 +163,12 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.main_window.sign_tx(self.tx, sign_done)
 
     def save(self):
-        if self.main_window.save_transaction_into_wallet(self.tx):
-            self.save_button.setDisabled(True)
-            self.saved = True
-
-
-    def export(self):
-        name = 'signed_%s.txn' % (self.tx.txid()[0:8]) if self.tx.is_complete() else 'unsigned.txn'
+        name = 'signed_%s.txn' % (self.tx.hash()[0:8]) if self.tx.is_complete() else 'unsigned.txn'
         fileName = self.main_window.getSaveFileName(_("Select where to save your signed transaction"), name, "*.txn")
         if fileName:
             with open(fileName, "w+") as f:
                 f.write(json.dumps(self.tx.as_dict(), indent=4) + '\n')
-            self.show_message(_("Transaction exported successfully"))
+            self.show_message(_("Transaction saved successfully"))
             self.saved = True
 
     def update(self):
@@ -227,11 +191,11 @@ class TxDialog(QDialog, MessageBoxMixin):
 
         if timestamp:
             time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
-            self.date_label.setText(_("Date: {}").format(time_str))
+            self.date_label.setText(_("Date: %s")%time_str)
             self.date_label.show()
         elif exp_n:
-            text = '%.2f MB'%(exp_n/1000000)
-            self.date_label.setText(_('Position in mempool') + ': ' + text + ' ' + _('from tip'))
+            text = '%d blocks'%(exp_n) if exp_n > 0 else _('unknown (low fee)')
+            self.date_label.setText(_('Expected confirmation time') + ': ' + text)
             self.date_label.show()
         else:
             self.date_label.hide()
@@ -242,13 +206,9 @@ class TxDialog(QDialog, MessageBoxMixin):
         else:
             amount_str = _("Amount sent:") + ' %s'% format_amount(-amount) + ' ' + base_unit
         size_str = _("Size:") + ' %d bytes'% size
-        fee_str = _("Fee") + ': %s' % (format_amount(fee) + ' ' + base_unit if fee is not None else _('unknown'))
+        fee_str = _("Fee") + ': %s'% (format_amount(fee) + ' ' + base_unit if fee is not None else _('unknown'))
         if fee is not None:
-            fee_rate = fee/size*1000
-            fee_str += '  ( %s ) ' % self.main_window.format_fee_rate(fee_rate)
-            confirm_rate = simple_config.FEERATE_WARNING_HIGH_FEE
-            if fee_rate > confirm_rate:
-                fee_str += ' - ' + _('Warning') + ': ' + _("high fee") + '!'
+            fee_str += '  ( %s ) '%  self.main_window.format_fee_rate(fee/size*1000)
         self.amount_label.setText(amount_str)
         self.fee_label.setText(fee_str)
         self.size_label.setText(size_str)
@@ -264,7 +224,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         rec.setBackground(QBrush(ColorScheme.GREEN.as_color(background=True)))
         rec.setToolTip(_("Wallet receive address"))
         chg = QTextCharFormat()
-        chg.setBackground(QBrush(ColorScheme.YELLOW.as_color(background=True)))
+        chg.setBackground(QBrush(QColor("yellow")))
         chg.setToolTip(_("Wallet change address"))
 
         def text_format(addr):
@@ -290,7 +250,7 @@ class TxDialog(QDialog, MessageBoxMixin):
                 cursor.insertText(prevout_hash[-8:] + ":%-4d " % prevout_n, ext)
                 addr = x.get('address')
                 if addr == "(pubkey)":
-                    _addr = self.wallet.get_txin_address(x)
+                    _addr = self.wallet.find_pay_to_pubkey_address(prevout_hash, prevout_n)
                     if _addr:
                         addr = _addr
                 if addr is None:
