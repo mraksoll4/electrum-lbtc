@@ -23,19 +23,17 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 import gettext, os
 
 LOCALE_DIR = os.path.join(os.path.dirname(__file__), 'locale')
 language = gettext.translation('electrum', LOCALE_DIR, fallback = True)
 
-
 def _(x):
     global language
-    dic = [('Bitcoin', 'Litebitcoin'), ('bitcoin', 'litebitcoin'), (u'比特币', u'莱特币')]
+    dic = [('Bitcoin', 'Litebitcoin'), ('bitcoin', 'litebitcoin'), ('比特币', '莱特币')]
     for b, l in dic:
         x = x.replace(l, b)
-    t = language.ugettext(x)
+    t = language.gettext(x)
     for b, l in dic:
         t = t.replace(b, l)
     return t

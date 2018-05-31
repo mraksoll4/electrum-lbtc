@@ -1,13 +1,13 @@
 ;--------------------------------
 ;Include Modern UI
-  !include "TextFunc.nsh" ;Needed for the $GetSize fuction. I know, doesn't sound logical, it isn't.
+  !include "TextFunc.nsh" ;Needed for the $GetSize function. I know, doesn't sound logical, it isn't.
   !include "MUI2.nsh"
   
 ;--------------------------------
 ;Variables
 
   !define PRODUCT_NAME "Electrum-LBTC"
-  !define PRODUCT_WEB_SITE "https://github.com/litebitcoins/electrum-lbtc"
+  !define PRODUCT_WEB_SITE "https://github.com/mraksoll4/electrum-lbtc"
   !define PRODUCT_PUBLISHER "Electrum Technologies GmbH"
   !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
@@ -72,7 +72,7 @@
   !define MUI_ABORTWARNING
   !define MUI_ABORTWARNING_TEXT "Are you sure you wish to abort the installation of ${PRODUCT_NAME}?"
   
-  !define MUI_ICON "..\..\icons\electrum.ico"
+  !define MUI_ICON "tmp\electrum-lbtc\icons\electrum.ico"
   
 ;--------------------------------
 ;Pages
@@ -129,6 +129,8 @@ Section
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\electrum-lbtc-${PRODUCT_VERSION}.exe" "" "$INSTDIR\electrum-lbtc-${PRODUCT_VERSION}.exe" 0
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME} Testnet.lnk" "$INSTDIR\electrum-lbtc-${PRODUCT_VERSION}.exe" "--testnet" "$INSTDIR\electrum-lbtc-${PRODUCT_VERSION}.exe" 0
+
 
   ;Links bitcoin: URI's to Electrum
   WriteRegStr HKCU "Software\Classes\litebitcoin" "" "URL:litebitcoin Protocol"
@@ -136,7 +138,7 @@ Section
   WriteRegStr HKCU "Software\Classes\litebitcoin" "DefaultIcon" "$\"$INSTDIR\electrum.ico, 0$\""
   WriteRegStr HKCU "Software\Classes\litebitcoin\shell\open\command" "" "$\"$INSTDIR\electrum-lbtc-${PRODUCT_VERSION}.exe$\" $\"%1$\""
 
-  ;Adds an uninstaller possibilty to Windows Uninstall or change a program section
+  ;Adds an uninstaller possibility to Windows Uninstall or change a program section
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"

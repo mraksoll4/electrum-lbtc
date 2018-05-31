@@ -22,7 +22,6 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 import os
 import hmac
 import math
@@ -33,10 +32,9 @@ import string
 import ecdsa
 import pbkdf2
 
-from util import print_error
-from bitcoin import is_old_seed, is_new_seed
-import version
-import i18n
+from .util import print_error
+from .bitcoin import is_old_seed, is_new_seed
+from . import version
 
 # http://www.asahi-net.or.jp/~ax2s-kmtn/ref/unicode/e_asia.html
 CJK_INTERVALS = [
@@ -80,7 +78,7 @@ def is_CJK(c):
 
 def normalize_text(seed):
     # normalize
-    seed = unicodedata.normalize('NFKD', unicode(seed))
+    seed = unicodedata.normalize('NFKD', seed)
     # lower
     seed = seed.lower()
     # remove accents
@@ -93,8 +91,9 @@ def normalize_text(seed):
 
 def load_wordlist(filename):
     path = os.path.join(os.path.dirname(__file__), 'wordlist', filename)
-    s = open(path,'r').read().strip()
-    s = unicodedata.normalize('NFKD', s.decode('utf8'))
+    with open(path, 'r', encoding='utf-8') as f:
+        s = f.read().strip()
+    s = unicodedata.normalize('NFKD', s)
     lines = s.split('\n')
     wordlist = []
     for line in lines:
@@ -139,7 +138,7 @@ class Mnemonic(object):
         words = []
         while i:
             x = i%n
-            i = i/n
+            i = i//n
             words.append(self.wordlist[x])
         return ' '.join(words)
 
@@ -158,28 +157,24 @@ class Mnemonic(object):
             i = i*n + k
         return i
 
-    def check_seed(self, seed, custom_entropy):
-        assert is_new_seed(seed)
-        i = self.mnemonic_decode(seed)
-        return i % custom_entropy == 0
-
-    def make_seed(self, seed_type='standard', num_bits=132, custom_entropy=1):
-        import version
+    def make_seed(self, seed_type='standard', num_bits=132):
         prefix = version.seed_prefix(seed_type)
-        # increase num_bits in order to obtain a uniform distibution for the last word
+        # increase num_bits in order to obtain a uniform distribution for the last word
         bpw = math.log(len(self.wordlist), 2)
-        num_bits = int(math.ceil(num_bits/bpw)) * bpw
-        # handle custom entropy; make sure we add at least 16 bits
-        n_custom = int(math.ceil(math.log(custom_entropy, 2)))
-        n = max(16, num_bits - n_custom)
-        print_error("make_seed", prefix, "adding %d bits"%n)
-        my_entropy = ecdsa.util.randrange(pow(2, n))
+        # rounding
+        n = int(math.ceil(num_bits/bpw) * bpw)
+        print_error("make_seed. prefix: '%s'"%prefix, "entropy: %d bits"%n)
+        entropy = 1
+        while entropy < pow(2, n - bpw):
+            # try again if seed would not contain enough words
+            entropy = ecdsa.util.randrange(pow(2, n))
         nonce = 0
         while True:
             nonce += 1
-            i = custom_entropy * (my_entropy + nonce)
+            i = entropy + nonce
             seed = self.mnemonic_encode(i)
-            assert i == self.mnemonic_decode(seed)
+            if i != self.mnemonic_decode(seed):
+                raise Exception('Cannot extract same entropy from mnemonic!')
             if is_old_seed(seed):
                 continue
             if is_new_seed(seed, prefix):

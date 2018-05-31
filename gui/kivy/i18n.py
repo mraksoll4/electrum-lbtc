@@ -1,23 +1,22 @@
 import gettext
 
-class _(unicode):
+
+class _(str):
 
     observers = set()
     lang = None
 
-    def __new__(cls, s, *args, **kwargs):
+    def __new__(cls, s):
         if _.lang is None:
             _.switch_lang('en')
-        t = _.translate(s, *args, **kwargs)
+        t = _.translate(s)
         o = super(_, cls).__new__(cls, t)
         o.source_text = s
         return o
 
     @staticmethod
     def translate(s, *args, **kwargs):
-        tr = _.lang(s).format(args, kwargs)
-        tr = tr.decode('utf8')
-        return tr
+        return _.lang(s)
 
     @staticmethod
     def bind(label):

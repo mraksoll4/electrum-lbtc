@@ -23,18 +23,19 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from PyQt4.QtGui import *
-from PyQt4.QtCore import *
 from electrum_lbtc.i18n import _
+from electrum_lbtc.mnemonic import Mnemonic
+import electrum_lbtc.old_mnemonic
 
-from util import *
-from qrtextedit import ShowQRTextEdit, ScanQRTextEdit
+from .util import *
+from .qrtextedit import ShowQRTextEdit, ScanQRTextEdit
+from .completion_text_edit import CompletionTextEdit
 
 
 def seed_warning_msg(seed):
     return ''.join([
         "<p>",
-        _("Please save these %d words on paper (order is important). "),
+        _("Please save these {0} words on paper (order is important). "),
         _("This seed will allow you to recover your wallet in case "
           "of computer failure."),
         "</p>",
@@ -44,8 +45,7 @@ def seed_warning_msg(seed):
         "<li>" + _("Never type it on a website.") + "</li>",
         "<li>" + _("Do not store it electronically.") + "</li>",
         "</ul>"
-    ]) % len(seed.split())
-
+    ]).format(len(seed.split()))
 
 
 class SeedLayout(QVBoxLayout):
@@ -63,16 +63,15 @@ class SeedLayout(QVBoxLayout):
         if 'bip39' in self.options:
             def f(b):
                 self.is_seed = (lambda x: bool(x)) if b else self.saved_is_seed
-                self.on_edit()
                 self.is_bip39 = b
+                self.on_edit()
                 if b:
                     msg = ' '.join([
-                        '<b>' + _('Warning') + ': BIP39 seeds are dangerous!' + '</b><br/><br/>',
-                        _('BIP39 seeds can be imported in Electrum so that users can access funds locked in other wallets.'),
-                        _('However, BIP39 seeds do not include a version number, which compromises compatibility with future wallet software.'),
-                        '<br/><br/>',
+                        '<b>' + _('Warning') + ':</b>  ',
+                        _('BIP39 seeds can be imported in Electrum, so that users can access funds locked in other wallets.'),
+                        _('However, we do not generate BIP39 seeds, because they do not meet our safety standard.'),
+                        _('BIP39 seeds do not include a version number, which compromises compatibility with future software.'),
                         _('We do not guarantee that BIP39 imports will always be supported in Electrum.'),
-                        _('In addition, Electrum does not verify the checksum of BIP39 seeds; make sure you type your seed correctly.'),
                     ])
                 else:
                     msg = ''
@@ -87,22 +86,22 @@ class SeedLayout(QVBoxLayout):
         self.is_ext = cb_ext.isChecked() if 'ext' in self.options else False
         self.is_bip39 = cb_bip39.isChecked() if 'bip39' in self.options else False
 
-
     def __init__(self, seed=None, title=None, icon=True, msg=None, options=None, is_seed=None, passphrase=None, parent=None):
         QVBoxLayout.__init__(self)
         self.parent = parent
         self.options = options
         if title:
             self.addWidget(WWLabel(title))
+        self.seed_e = CompletionTextEdit()
         if seed:
-            self.seed_e = ShowQRTextEdit()
             self.seed_e.setText(seed)
         else:
-            self.seed_e = ScanQRTextEdit()
             self.seed_e.setTabChangesFocus(True)
             self.is_seed = is_seed
             self.saved_is_seed = self.is_seed
             self.seed_e.textChanged.connect(self.on_edit)
+            self.initialize_completer()
+
         self.seed_e.setMaximumHeight(75)
         hbox = QHBoxLayout()
         if icon:
@@ -134,8 +133,16 @@ class SeedLayout(QVBoxLayout):
             self.seed_warning.setText(seed_warning_msg(seed))
         self.addWidget(self.seed_warning)
 
+    def initialize_completer(self):
+        english_list = Mnemonic('en').wordlist
+        old_list = electrum_lbtc.old_mnemonic.words
+        self.wordlist = english_list + list(set(old_list) - set(english_list)) #concat both lists
+        self.wordlist.sort()
+        self.completer = QCompleter(self.wordlist)
+        self.seed_e.set_completer(self.completer)
+
     def get_seed(self):
-        text = unicode(self.seed_e.text())
+        text = self.seed_e.text()
         return ' '.join(text.split())
 
     def on_edit(self):
@@ -153,20 +160,25 @@ class SeedLayout(QVBoxLayout):
         self.seed_type_label.setText(label)
         self.parent.next_button.setEnabled(b)
 
-
+        # to account for bip39 seeds
+        for word in self.get_seed().split(" ")[:-1]:
+            if word not in self.wordlist:
+                self.seed_e.disable_suggestions()
+                return
+        self.seed_e.enable_suggestions()
 
 class KeysLayout(QVBoxLayout):
-    def __init__(self, parent=None, title=None, is_valid=None):
+    def __init__(self, parent=None, title=None, is_valid=None, allow_multi=False):
         QVBoxLayout.__init__(self)
         self.parent = parent
         self.is_valid = is_valid
-        self.text_e = ScanQRTextEdit()
+        self.text_e = ScanQRTextEdit(allow_multi=allow_multi)
         self.text_e.textChanged.connect(self.on_edit)
         self.addWidget(WWLabel(title))
         self.addWidget(self.text_e)
 
     def get_text(self):
-        return unicode(self.text_e.text())
+        return self.text_e.text()
 
     def on_edit(self):
         b = self.is_valid(self.get_text())

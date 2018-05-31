@@ -1,7 +1,5 @@
 #!/usr/bin/python2
-import sys
 import re
-import hashlib
 import os
 
 from versions import version, version_win, version_mac, version_android, version_apk
@@ -27,7 +25,7 @@ files = {
 
 for k, n in files.items():
     path = "dist/%s"%n
-    link = "http://download.lbtc.info/%s"%n
+    link = "https://download.electrum-lbtc.org/%s"%n
     if not os.path.exists(path):
         os.system("wget -q %s -O %s" % (link, path))
     if not os.path.getsize(path):
@@ -43,7 +41,7 @@ for k, n in files.items():
         string = re.sub("<div id=\"%s\">(.*?)</div>"%k, '', string, flags=re.DOTALL + re.MULTILINE)
         continue
     if os.system("gpg --verify %s"%sigpath) != 0:
-        raise BaseException(sigpath)
+        raise Exception(sigpath)
     string = string.replace("##link_%s##"%k, link)
 
 

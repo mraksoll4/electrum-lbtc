@@ -7,7 +7,7 @@ title = Electrum-LBTC
 package.name = Electrum_LBTC
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.electrum_libtc
+package.domain = org.electrum_lbtc
 
 # (str) Source code where the main.py live
 source.dir = .
@@ -24,21 +24,20 @@ source.exclude_dirs = bin, build, dist, contrib, gui/qt, gui/kivy/tools, gui/kiv
 source.exclude_patterns = Makefile,setup*
 
 # (str) Application versioning (method 1)
-#version.regex = version_apk = '(.*)'
-#version.filename = %(source.dir)s/contrib/versions.py
+version.regex = version_apk = '(.*)'
+version.filename = %(source.dir)s/contrib/versions.py
 
 # (str) Application versioning (method 2)
-version = 2.9.3.1
+#version = 1.9.8
 
 # (list) Application requirements
-requirements = hostpython2, idna, certifi, chardet, urllib3, android, openssl, pycrypto, pil, plyer, kivy==master
+requirements = python3crystax==3.6, android, openssl, plyer, kivy==master
 
 # (str) Presplash of the application
 #presplash.filename = %(source.dir)s/gui/kivy/theming/splash.png
 presplash.filename = %(source.dir)s/icons/electrum_presplash.png
 
 # (str) Icon of the application
-#icon.filename = %(source.dir)s/icons/electrum_android_launcher_icon.png
 icon.filename = %(source.dir)s/icons/electrum_launcher.png
 
 # (str) Supported orientation (one of landscape, portrait or all)
@@ -53,7 +52,8 @@ fullscreen = False
 #
 
 # (list) Permissions
-android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, CAMERA
+
 # (int) Android API to use
 #android.api = 14
 
@@ -70,7 +70,7 @@ android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 android.private_storage = True
 
 # (str) Android NDK directory (if empty, it will be automatically downloaded.)
-#android.ndk_path =
+android.ndk_path = /opt/crystax-ndk-10.3.2
 
 # (str) Android SDK directory (if empty, it will be automatically downloaded.)
 #android.sdk_path =
@@ -87,7 +87,11 @@ android.private_storage = True
 
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
-#android.add_src =
+android.add_src = gui/kivy/data/java-classes/
+
+android.gradle_dependencies = me.dm7.barcodescanner:zxing:1.9.8
+
+android.add_activities = org.electrum.qr.SimpleScannerActivity
 
 # (str) python-for-android branch to use, if not master, useful to try
 # not yet merged features.
@@ -102,6 +106,9 @@ android.private_storage = True
 
 # (str) XML file to include as an intent filters in <activity> tag
 android.manifest.intent_filters = gui/kivy/tools/bitcoin_intent.xml
+
+# (str) launchMode to set for the main activity
+android.manifest.launch_mode = singleTask
 
 # (list) Android additionnal libraries to copy into libs/armeabi
 #android.add_libs_armeabi = lib/android/*.so
@@ -120,7 +127,7 @@ android.manifest.intent_filters = gui/kivy/tools/bitcoin_intent.xml
 android.whitelist = lib-dynload/_csv.so
 
 # local version that merges branch 866
-p4a.source_dir = /home/kivy/python-for-android-master
+p4a.source_dir = /opt/python-for-android
 
 #
 # iOS specific

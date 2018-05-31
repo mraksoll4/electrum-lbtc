@@ -1,18 +1,15 @@
-import base64
-import re
-import threading
-
 from binascii import hexlify, unhexlify
-from functools import partial
 
-from electrum_lbtc.bitcoin import (bc_address_to_hash_160, xpub_from_pubkey,
-                              public_key_to_p2pkh, EncodeBase58Check,
-                              TYPE_ADDRESS, TYPE_SCRIPT,
-                              TESTNET, ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT)
+from electrum_lbtc.util import bfh, bh2u
+from electrum_lbtc.bitcoin import (b58_address_to_hash160, xpub_from_pubkey,
+                                  TYPE_ADDRESS, TYPE_SCRIPT,
+                                  is_segwit_address)
+from electrum_lbtc import constants
 from electrum_lbtc.i18n import _
-from electrum_lbtc.plugins import BasePlugin, hook
+from electrum_lbtc.plugins import BasePlugin
 from electrum_lbtc.transaction import deserialize, Transaction
 from electrum_lbtc.keystore import Hardware_KeyStore, is_xpubkey, parse_xpubkey
+from electrum_lbtc.base_wizard import ScriptTypeNotSupported
 
 from ..hw_wallet import HW_PluginBase
 
@@ -20,23 +17,19 @@ from ..hw_wallet import HW_PluginBase
 # TREZOR initialization methods
 TIM_NEW, TIM_RECOVER, TIM_MNEMONIC, TIM_PRIVKEY = range(0, 4)
 
-class TrezorCompatibleKeyStore(Hardware_KeyStore):
+class KeepKeyCompatibleKeyStore(Hardware_KeyStore):
 
     def get_derivation(self):
         return self.derivation
+
+    def is_segwit(self):
+        return self.derivation.startswith("m/49'/")
 
     def get_client(self, force_pair=True):
         return self.plugin.get_client(self, force_pair)
 
     def decrypt_message(self, sequence, message, password):
-        raise RuntimeError(_('Electrum and %s encryption and decryption are currently incompatible') % self.device)
-        client = self.get_client()
-        address_path = self.get_derivation() + "/%d/%d"%sequence
-        address_n = client.expand_path(address_path)
-        payload = base64.b64decode(message)
-        nonce, message, msg_hmac = payload[:33], payload[33:-8], payload[-8:]
-        result = client.decrypt_message(address_n, nonce, message, msg_hmac)
-        return result.message
+        raise RuntimeError(_('Encryption and decryption are not implemented by {}').format(self.device))
 
     def sign_message(self, sequence, message, password):
         client = self.get_client()
@@ -55,7 +48,9 @@ class TrezorCompatibleKeyStore(Hardware_KeyStore):
         for txin in tx.inputs():
             pubkeys, x_pubkeys = tx.get_sorted_pubkeys(txin)
             tx_hash = txin['prevout_hash']
-            prev_tx[tx_hash] = txin['prev_tx'] 
+            if txin.get('prev_tx') is None and not Transaction.is_segwit_input(txin):
+                raise Exception(_('Offline signing with {} is not supported for legacy inputs.').format(self.device))
+            prev_tx[tx_hash] = txin['prev_tx']
             for x_pubkey in x_pubkeys:
                 if not is_xpubkey(x_pubkey):
                     continue
@@ -66,7 +61,7 @@ class TrezorCompatibleKeyStore(Hardware_KeyStore):
         self.plugin.sign_transaction(self, tx, prev_tx, xpub_path)
 
 
-class TrezorCompatiblePlugin(HW_PluginBase):
+class KeepKeyCompatiblePlugin(HW_PluginBase):
     # Derived classes provide:
     #
     #  class-static variables: client_class, firmware_URL, handler_class,
@@ -77,8 +72,6 @@ class TrezorCompatiblePlugin(HW_PluginBase):
 
     def __init__(self, parent, config, name):
         HW_PluginBase.__init__(self, parent, config, name)
-        self.main_thread = threading.current_thread()
-        # FIXME: move to base class when Ledger is fixed
         if self.libraries_available:
             self.device_manager().register_devices(self.DEVICE_IDS)
 
@@ -96,7 +89,7 @@ class TrezorCompatiblePlugin(HW_PluginBase):
             # raise
             self.print_error("cannot connect at", device.path, str(e))
             return None
- 
+
     def _try_bridge(self, device):
         self.print_error("Trying to connect over Trezor Bridge...")
         try:
@@ -106,7 +99,7 @@ class TrezorCompatiblePlugin(HW_PluginBase):
             return None
 
     def create_client(self, device, handler):
-        # disable bridge because it seems to never returns if keepkey is plugged
+        # disable bridge because it seems to never returns if KeepKey is plugged
         #transport = self._try_bridge(device) or self._try_hid(device)
         transport = self._try_hid(device)
         if not transport:
@@ -125,9 +118,9 @@ class TrezorCompatiblePlugin(HW_PluginBase):
             return None
 
         if not client.atleast_version(*self.minimum_firmware):
-            msg = (_('Outdated %s firmware for device labelled %s. Please '
-                     'download the updated firmware from %s') %
-                   (self.device, client.label(), self.firmware_URL))
+            msg = (_('Outdated {} firmware for device labelled {}. Please '
+                     'download the updated firmware from {}')
+                   .format(self.device, client.label(), self.firmware_URL))
             self.print_error(msg)
             handler.show_error(msg)
             return None
@@ -135,8 +128,6 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         return client
 
     def get_client(self, keystore, force_pair=True):
-        # All client interaction should not be in the main GUI thread
-        assert self.main_thread != threading.current_thread()
         devmgr = self.device_manager()
         handler = keystore.handler
         with devmgr.hid_lock:
@@ -147,18 +138,18 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         return client
 
     def get_coin_name(self):
-        return "Testnet" if TESTNET else "Litebitcoin"
+        return "Testnet" if constants.net.TESTNET else "Litebitcoin"
 
     def initialize_device(self, device_id, wizard, handler):
         # Initialization method
-        msg = _("Choose how you want to initialize your %s.\n\n"
+        msg = _("Choose how you want to initialize your {}.\n\n"
                 "The first two methods are secure as no secret information "
                 "is entered into your computer.\n\n"
                 "For the last two methods you input secrets on your keyboard "
-                "and upload them to your %s, and so you should "
+                "and upload them to your {}, and so you should "
                 "only do those on a computer you know to be trustworthy "
                 "and free of malware."
-        ) % (self.device, self.device)
+        ).format(self.device, self.device)
         choices = [
             # Must be short as QT doesn't word-wrap radio button text
             (TIM_NEW, _("Let the device generate a completely new seed randomly")),
@@ -178,26 +169,14 @@ class TrezorCompatiblePlugin(HW_PluginBase):
     def _initialize_device(self, settings, method, device_id, wizard, handler):
         item, label, pin_protection, passphrase_protection = settings
 
-        if method == TIM_RECOVER and self.device == 'TREZOR':
-            # Warn user about firmware lameness
-            handler.show_error(_(
-                "You will be asked to enter 24 words regardless of your "
-                "seed's actual length.  If you enter a word incorrectly or "
-                "misspell it, you cannot change it or go back - you will need "
-                "to start again from the beginning.\n\nSo please enter "
-                "the words carefully!"))
-
         language = 'english'
         devmgr = self.device_manager()
         client = devmgr.client_by_id(device_id)
 
         if method == TIM_NEW:
             strength = 64 * (item + 2)  # 128, 192 or 256
-            u2f_counter = 0
-            skip_backup = False
             client.reset_device(True, strength, passphrase_protection,
-                                pin_protection, label, language,
-                                u2f_counter, skip_backup)
+                                pin_protection, label, language)
         elif method == TIM_RECOVER:
             word_count = 6 * (item + 2)  # 12, 18 or 24
             client.step = 0
@@ -214,10 +193,7 @@ class TrezorCompatiblePlugin(HW_PluginBase):
                                        label, language)
         wizard.loop.exit(0)
 
-    def setup_device(self, device_info, wizard):
-        '''Called when creating a new wallet.  Select the device to use.  If
-        the device is uninitialized, go through the intialization
-        process.'''
+    def setup_device(self, device_info, wizard, purpose):
         devmgr = self.device_manager()
         device_id = device_info.device.id_
         client = devmgr.client_by_id(device_id)
@@ -225,14 +201,16 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         client.handler = self.create_handler(wizard)
         if not device_info.initialized:
             self.initialize_device(device_id, wizard, client.handler)
-        client.get_xpub('m')
+        client.get_xpub('m', 'standard')
         client.used()
 
-    def get_xpub(self, device_id, derivation, wizard):
+    def get_xpub(self, device_id, derivation, xtype, wizard):
+        if xtype not in ('standard',):
+            raise ScriptTypeNotSupported(_('This type of script is not supported with KeepKey.'))
         devmgr = self.device_manager()
         client = devmgr.client_by_id(device_id)
         client.handler = wizard
-        xpub = client.get_xpub(derivation)
+        xpub = client.get_xpub(derivation, xtype)
         client.used()
         return xpub
 
@@ -240,24 +218,26 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         self.prev_tx = prev_tx
         self.xpub_path = xpub_path
         client = self.get_client(keystore)
-        inputs = self.tx_inputs(tx, True)
-        outputs = self.tx_outputs(keystore.get_derivation(), tx)
+        inputs = self.tx_inputs(tx, True, keystore.is_segwit())
+        outputs = self.tx_outputs(keystore.get_derivation(), tx, keystore.is_segwit())
         signed_tx = client.sign_tx(self.get_coin_name(), inputs, outputs, lock_time=tx.locktime)[1]
-        raw = signed_tx.encode('hex')
+        raw = bh2u(signed_tx)
         tx.update_signatures(raw)
 
     def show_address(self, wallet, address):
         client = self.get_client(wallet.keystore)
         if not client.atleast_version(1, 3):
-            keystore.handler.show_error(_("Your device firmware is too old"))
+            wallet.keystore.handler.show_error(_("Your device firmware is too old"))
             return
         change, index = wallet.get_address_index(address)
         derivation = wallet.keystore.derivation
         address_path = "%s/%d/%d"%(derivation, change, index)
         address_n = client.expand_path(address_path)
-        client.get_address(self.get_coin_name(), address_n, True)
+        segwit = wallet.keystore.is_segwit()
+        script_type = self.types.SPENDP2SHWITNESS if segwit else self.types.SPENDADDRESS
+        client.get_address(self.get_coin_name(), address_n, True, script_type=script_type)
 
-    def tx_inputs(self, tx, for_sig=False):
+    def tx_inputs(self, tx, for_sig=False, segwit=False):
         inputs = []
         for txin in tx.inputs():
             txinputtype = self.types.TxInputType()
@@ -272,23 +252,25 @@ class TrezorCompatiblePlugin(HW_PluginBase):
                         xpub, s = parse_xpubkey(x_pubkey)
                         xpub_n = self.client_class.expand_path(self.xpub_path[xpub])
                         txinputtype.address_n.extend(xpub_n + s)
+                        txinputtype.script_type = self.types.SPENDP2SHWITNESS if segwit else self.types.SPENDADDRESS
                     else:
                         def f(x_pubkey):
                             if is_xpubkey(x_pubkey):
                                 xpub, s = parse_xpubkey(x_pubkey)
                             else:
-                                xpub = xpub_from_pubkey(0, x_pubkey.decode('hex'))
+                                xpub = xpub_from_pubkey(0, bfh(x_pubkey))
                                 s = []
                             node = self.ckd_public.deserialize(xpub)
                             return self.types.HDNodePathType(node=node, address_n=s)
                         pubkeys = map(f, x_pubkeys)
                         multisig = self.types.MultisigRedeemScriptType(
                             pubkeys=pubkeys,
-                            signatures=map(lambda x: x.decode('hex')[:-1] if x else '', txin.get('signatures')),
+                            signatures=map(lambda x: bfh(x)[:-1] if x else b'', txin.get('signatures')),
                             m=txin.get('num_sig'),
                         )
+                        script_type = self.types.SPENDP2SHWITNESS if segwit else self.types.SPENDMULTISIG
                         txinputtype = self.types.TxInputType(
-                            script_type=self.types.SPENDMULTISIG,
+                            script_type=script_type,
                             multisig=multisig
                         )
                         # find which key is mine
@@ -303,11 +285,13 @@ class TrezorCompatiblePlugin(HW_PluginBase):
                 prev_hash = unhexlify(txin['prevout_hash'])
                 prev_index = txin['prevout_n']
 
+            if 'value' in txin:
+                txinputtype.amount = txin['value']
             txinputtype.prev_hash = prev_hash
             txinputtype.prev_index = prev_index
 
             if 'scriptSig' in txin:
-                script_sig = txin['scriptSig'].decode('hex')
+                script_sig = bfh(txin['scriptSig'])
                 txinputtype.script_sig = script_sig
 
             txinputtype.sequence = txin.get('sequence', 0xffffffff - 1)
@@ -316,52 +300,84 @@ class TrezorCompatiblePlugin(HW_PluginBase):
 
         return inputs
 
-    def tx_outputs(self, derivation, tx):
-        outputs = []
-        has_change = False
+    def tx_outputs(self, derivation, tx, segwit=False):
 
-        for _type, address, amount in tx.outputs():
-            info = tx.output_info.get(address)
-            if info is not None and not has_change:
-                has_change = True # no more than one change address
-                addrtype, hash_160 = bc_address_to_hash_160(address)
-                index, xpubs, m = info
-                if addrtype == ADDRTYPE_P2PKH:
-                    address_n = self.client_class.expand_path(derivation + "/%d/%d"%index)
-                    txoutputtype = self.types.TxOutputType(
-                        amount = amount,
-                        script_type = self.types.PAYTOADDRESS,
-                        address_n = address_n,
-                    )
-                elif addrtype in [ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]:
-                    address_n = self.client_class.expand_path("/%d/%d"%index)
-                    nodes = map(self.ckd_public.deserialize, xpubs)
-                    pubkeys = [ self.types.HDNodePathType(node=node, address_n=address_n) for node in nodes]
-                    multisig = self.types.MultisigRedeemScriptType(
-                        pubkeys = pubkeys,
-                        signatures = [b''] * len(pubkeys),
-                        m = m)
-                    txoutputtype = self.types.TxOutputType(
-                        multisig = multisig,
-                        amount = amount,
-                        address_n = self.client_class.expand_path(derivation + "/%d/%d"%index),
-                        script_type = self.types.PAYTOMULTISIG)
+        def create_output_by_derivation(info):
+            index, xpubs, m = info
+            if len(xpubs) == 1:
+                script_type = self.types.PAYTOP2SHWITNESS if segwit else self.types.PAYTOADDRESS
+                address_n = self.client_class.expand_path(derivation + "/%d/%d" % index)
+                txoutputtype = self.types.TxOutputType(
+                    amount=amount,
+                    script_type=script_type,
+                    address_n=address_n,
+                )
             else:
-                txoutputtype = self.types.TxOutputType()
-                txoutputtype.amount = amount
-                if _type == TYPE_SCRIPT:
-                    txoutputtype.script_type = self.types.PAYTOOPRETURN
-                    txoutputtype.op_return_data = address[2:]
-                elif _type == TYPE_ADDRESS:
-                    addrtype, hash_160 = bc_address_to_hash_160(address)
-                    if addrtype == ADDRTYPE_P2PKH:
+                script_type = self.types.PAYTOP2SHWITNESS if segwit else self.types.PAYTOMULTISIG
+                address_n = self.client_class.expand_path("/%d/%d" % index)
+                nodes = map(self.ckd_public.deserialize, xpubs)
+                pubkeys = [self.types.HDNodePathType(node=node, address_n=address_n) for node in nodes]
+                multisig = self.types.MultisigRedeemScriptType(
+                    pubkeys=pubkeys,
+                    signatures=[b''] * len(pubkeys),
+                    m=m)
+                txoutputtype = self.types.TxOutputType(
+                    multisig=multisig,
+                    amount=amount,
+                    address_n=self.client_class.expand_path(derivation + "/%d/%d" % index),
+                    script_type=script_type)
+            return txoutputtype
+
+        def create_output_by_address():
+            txoutputtype = self.types.TxOutputType()
+            txoutputtype.amount = amount
+            if _type == TYPE_SCRIPT:
+                txoutputtype.script_type = self.types.PAYTOOPRETURN
+                txoutputtype.op_return_data = address[2:]
+            elif _type == TYPE_ADDRESS:
+                if is_segwit_address(address):
+                    txoutputtype.script_type = self.types.PAYTOWITNESS
+                else:
+                    addrtype, hash_160 = b58_address_to_hash160(address)
+                    if addrtype == constants.net.ADDRTYPE_P2PKH:
                         txoutputtype.script_type = self.types.PAYTOADDRESS
-                    elif addrtype in [ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]:
+                    elif addrtype == constants.net.ADDRTYPE_P2SH:
                         txoutputtype.script_type = self.types.PAYTOSCRIPTHASH
                     else:
-                        raise BaseException('addrtype')
-                    txoutputtype.address = address
+                        raise Exception('addrtype: ' + str(addrtype))
+                txoutputtype.address = address
+            return txoutputtype
 
+        def is_any_output_on_change_branch():
+            for _type, address, amount in tx.outputs():
+                info = tx.output_info.get(address)
+                if info is not None:
+                    index, xpubs, m = info
+                    if index[0] == 1:
+                        return True
+            return False
+
+        outputs = []
+        has_change = False
+        any_output_on_change_branch = is_any_output_on_change_branch()
+
+        for _type, address, amount in tx.outputs():
+            use_create_by_derivation = False
+
+            info = tx.output_info.get(address)
+            if info is not None and not has_change:
+                index, xpubs, m = info
+                on_change_branch = index[0] == 1
+                # prioritise hiding outputs on the 'change' branch from user
+                # because no more than one change address allowed
+                if on_change_branch == any_output_on_change_branch:
+                    use_create_by_derivation = True
+                    has_change = True
+
+            if use_create_by_derivation:
+                txoutputtype = create_output_by_derivation(info)
+            else:
+                txoutputtype = create_output_by_address()
             outputs.append(txoutputtype)
 
         return outputs
@@ -376,10 +392,10 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         for vout in d['outputs']:
             o = t.bin_outputs.add()
             o.amount = vout['value']
-            o.script_pubkey = vout['scriptPubKey'].decode('hex')
+            o.script_pubkey = bfh(vout['scriptPubKey'])
         return t
 
-    # This function is called from the trezor libraries (via tx_api)
+    # This function is called from the TREZOR libraries (via tx_api)
     def get_tx(self, tx_hash):
         tx = self.prev_tx[tx_hash]
         return self.electrum_tx_to_txtype(tx)

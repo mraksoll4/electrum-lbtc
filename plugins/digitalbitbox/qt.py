@@ -1,6 +1,11 @@
-from PyQt4.Qt import (QInputDialog, QLineEdit)
+from functools import partial
+
 from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
-from digitalbitbox import DigitalBitboxPlugin
+from .digitalbitbox import DigitalBitboxPlugin
+
+from electrum_lbtc.i18n import _
+from electrum_lbtc.plugins import hook
+from electrum_lbtc.wallet import Standard_Wallet
 
 
 class Plugin(DigitalBitboxPlugin, QtPluginBase):
@@ -9,6 +14,27 @@ class Plugin(DigitalBitboxPlugin, QtPluginBase):
 
     def create_handler(self, window):
         return DigitalBitbox_Handler(window)
+
+    @hook
+    def receive_menu(self, menu, addrs, wallet):
+        if type(wallet) is not Standard_Wallet:
+            return
+
+        keystore = wallet.get_keystore()
+        if type(keystore) is not self.keystore_class:
+            return
+
+        if not self.is_mobile_paired():
+            return
+
+        if not keystore.is_p2pkh():
+            return
+
+        if len(addrs) == 1:
+            def show_address():
+                keystore.thread.add(partial(self.show_address, wallet, keystore, addrs[0]))
+
+            menu.addAction(_("Show on {}").format(self.device), show_address)
 
 
 class DigitalBitbox_Handler(QtHandlerBase):
