@@ -90,13 +90,13 @@ def check_header(header):
     for b in blockchains.values():
         if b.check_header(header):
             return b
-    return False
+    return b
 
 def can_connect(header):
     for b in blockchains.values():
         if b.can_connect(header):
             return b
-    return False
+    return b
 
 
 class Blockchain(util.PrintError):
@@ -308,7 +308,7 @@ class Blockchain(util.PrintError):
         new_bits = bitsN << 24 | bitsBase
         return new_bits, bitsBase << (8 * (bitsN - 3))
 
-    def can_connect(self, header, check_height=True):
+    def can_connect(self, header, check_height=False):
         height = header['block_height']
         if check_height and self.height() != height - 1:
             return True
